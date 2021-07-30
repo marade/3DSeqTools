@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+
+# This is the first script in the 3D-Seq Tools pipeline. Run it
+# without arguments to get the usage. If you use the script, please
+# provide proper attribution.
+#
+# author: M Radey (email: marad_at_uw.edu)
+
+import os, sys, argparse, glob
+import numpy as np
+from multiprocessing import Pool, Manager, cpu_count
+from colorama import init as cinit
+from colorama import Fore, Back, Style
+
+version     = "1.0.0"
+
+def get_subfull_core_count():
+    # return the maximum number of CPU cores minus one
+    count = cpu_count()
+    if count > 2: count = count - 1
+    return count
+
+def do_args():
+    maxcores = get_subfull_core_count()
+    desc = "A utility for aligning Illumina reads and calling variants"
+    parser = argparse.ArgumentParser(prog=os.path.basename(__file__),\
+        description=desc)
+    parser.add_argument("indir", help="specifies the input directory " +\
+        "containing Fastq files in the SampleX_1.fastq.gz " +\
+        "SampleX_2.fastq.gz naming style. Reads can be gzipped or not.")
+    parser.add_argument("refdir", help="specifies the directory containing " +\
+        "the NCBI-style reference FNA, FAA, and GFF files")
+    parser.add_argument("outdir", help="specifies the file where " +\
+        "you want the output to go")
+    parser.add_argument("-n", "--threads", type=int, default=maxcores,\
+        help="specifies the number of threads to use. " +\
+        "The default is %(default)s.")
+    parser.add_argument("-m", "--mem", type=int,\
+        default=4, help="specifies the amount of memory in Gigabytes to " +\
+        "use for sorting. The default is %(default)s.")
+    parser.add_argument("-t", "--tmp", default="/tmp",\
+        help="specifies the temporary dir to use. The default is %(default)s.")
+    return parser.parse_args()
+
+def dir_check(mydir):
+    # check if a directory exists and if not create it
+    if not os.path.isdir(mydir): os.mkdir(mydir)
+
+def wgs_align_prepare_simple_ref(refdir, outdir, mem, ccores):
+    # given a directory with NCBI-style reference Fasta, set up a another
+    # directory with reference Fasta prepared for BWA-style WGS alignment
+    samtools = which("samtools")
+    if samtools == None:
+        print(Fore.RED + "ERROR: samtools not found.")
+        sys.stdout.write(Style.RESET_ALL)
+        sys.exit()
+    picard = which("PicardCommandLine")
+    if picard == None:
+        print(Fore.RED + "ERROR: PicardCommandLine not found.")
+        sys.stdout.write(Style.RESET_ALL)
+        sys.exit()
+    env = which("env")
+    if env == None:
+        print(Fore.RED + "ERROR: env not found.")
+        sys.stdout.write(Style.RESET_ALL)
+        sys.exit()
+    print(Fore.CYAN + "Preparing reference...")
+    sys.stdout.write(Style.RESET_ALL)
+    dir_check(outdir)
+    fnalist = glob.glob(refdir + "/*.fna")
+    if not len(fnalist) == 1:
+        print(Fore.RED + "ERROR: Too many or not enough reference " +\
+            "files in the reference directory. Please include one " +\
+            "one .fna file.")
+        sys.stdout.write(Style.RESET_ALL)
+        sys.exit()
+    baseref, ext = os.path.splitext(os.path.basename(fnalist[0]))
+    lref = outdir + "/" + baseref + ".fa"
+    ldict = outdir + "/" + baseref + ".dict"
+    if not os.path.isfile(lref):
+        print(Fore.BLUE + "Copying reference...")
+        sys.stdout.write(Style.RESET_ALL)
+        copyfile(fnalist[0], lref)
+    args1 = [samtools, "faidx", lref]
+    print(Fore.BLUE + "Indexing reference...")
+    print(" ".join(args1))
+    sys.stdout.write(Style.RESET_ALL)
+    call(args1, shell=False)
+    if not os.path.isfile(ldict):
+        args1 = [env, 'JAVA_OPTIONS=-Dpicard.useLegacyParser=false -Xmx' +\
+            str(mem) + 'g', picard, "CreateSequenceDictionary", "-R", lref,\
+            "-O", ldict, "-VERBOSITY", "WARNING", "-QUIET", "TRUE"]
+        print(Fore.BLUE + "Creating sequence dictionary...")
+        print(Fore.BLUE + " ".join(args1))
+        sys.stdout.write(Style.RESET_ALL)
+        call(args1, shell=False)
+    return lref, ldict, fnalist[0]
+
+def get_shortname_fastq_reads(mydir):
+    # return a list of tuples of paths to Fastq files with _1.fastq.gz
+    # or _1.fastq style endings, where each tuple contain a pair of
+    # Fastq files (paired end) or a single Fastq file (single end)
+    ingz = glob.glob(mydir + "/*_1.fastq.gz")
+    infq = glob.glob(mydir + "/*_1.fastq")
+    singlein = ingz + infq
+    allin = []
+    for file in singlein:
+        pairfile = ""
+        if "_1.fastq.gz" in file:
+            pairfile = re.sub("_1.fastq.gz", "_2.fastq.gz", file)
+        else: pairfile = re.sub("_1.fastq", "_2.fastq", file)
+        if not os.path.isfile(pairfile): allin.append((file))
+        else: allin.append((file, pairfile))
+    return allin
+
+def subsample_read_length(fq):
+    # subsample the first million reads in a Fastq file and
+    # return the mean length
+    if fq.endswith('.gz'): n = gzip.open(fq, 'rt')
+    else: n = open(fq, 'rU')
+    rcount = 0
+    rlens = []
+    for name, seq, qual in FastqGeneralIterator(n):
+        rcount += 1
+        rlens.append(len(seq))
+        if rcount > 1000000: break
+    n.close()
+    return np.mean(rlens)
+
+def hts_process_reads_proc(vals):
+    (rset, outdir, lref, jobcount) = vals
+    # a proxy object is necessary to sync our changes with
+    # the multiprocessing manager
+    tdir = outdir + "/trimmed"
+    dir_check(tdir)
+    jobprox = jobcount
+    hSD = which("hts_SuperDeduper")
+    hAT = which("hts_AdapterTrimmer")
+    hQT = which("hts_QWindowTrim")
+    hLF = which("hts_LengthFilter")
+    hSS = which("hts_SeqScreener")
+    hS = which("hts_Stats")
+    if hSD == None or hAT == None or hQT == None or hLF == None or \
+        hSS == None or hS == None:
+        print(Fore.RED + "ERROR: HTStream utilities not found.")
+        sys.stdout.write(Style.RESET_ALL)
+        sys.exit()
+    pigz = which("pigz")
+    if pigz == None:
+        print(Fore.RED + "ERROR: pigz not found.")
+        sys.stdout.write(Style.RESET_ALL)
+        sys.exit()
+    print(Fore.CYAN + "De-duplicate, remove adapter & phiX " +\
+        "sequences, trim: " + ' '.join(rset))
+    sys.stdout.write(Style.RESET_ALL)
+    gz = False
+    if rset[0].endswith('.gz'): gz = True
+    rbase = re.sub(".gz$", "", os.path.basename(rset[0]))
+    rbase = re.sub("_1.fastq", "", rbase)
+    rbase = re.sub("_1.fq", "", rbase)
+    tbase = tdir + "/" + rbase
+    rfq1 = tbase + "_R1.fastq.gz"
+    tfq1 = tbase + "_1.fastq.gz"
+    rfq2 = tbase + "_R2.fastq.gz"
+    tfq2 = tbase + "_2.fastq.gz"
+    tlog = tbase + ".hts.log"
+    readlen = subsample_read_length(rset[0])
+    mlen = str(int(float(readlen) * 0.5))
+    args1 = []
+    if len(rset) == 2:
+        args1 = [hSD, '-L', tlog, '-1', rset[0], '-2', rset[1]] 
+    else:
+        args1 = [hSD, '-L', tlog, '-1', rset[0]] 
+    args2 = [hSS, '-A', tlog, '-L', tlog]
+    args3 = [hAT, '-A', tlog, '-L', tlog]
+    args4 = [hQT, '-A', tlog, '-L', tlog, '-w', '20', '-q', '10']
+    args5 = [hLF, '-m', mlen, '-A', tlog, '-L', tlog]
+    args6 = [hS, '-N', 'Detailed_Stats', '-A', tlog, '-L', tlog, '-f',\
+        tbase]
+    print(Fore.CYAN + "Running HTStream pipeline...")
+    print(Fore.BLUE + " ".join(args1))
+    print(" ".join(args2))
+    print(" ".join(args3))
+    print(" ".join(args4))
+    print(" ".join(args5))
+    print(" ".join(args6))
+    sys.stdout.write(Style.RESET_ALL)
+    a1 = Popen(args1, stdout=PIPE, shell=False)
+    a2 = Popen(args2, stdin=a1.stdout, stdout=PIPE, shell=False)
+    a3 = Popen(args3, stdin=a2.stdout, stdout=PIPE, shell=False)
+    a4 = Popen(args4, stdin=a3.stdout, stdout=PIPE, shell=False)
+    a5 = Popen(args5, stdin=a4.stdout, stdout=PIPE, shell=False)
+    call(args6, stdin=a5.stdout, stdout=PIPE, shell=False)
+    os.rename(rfq1, tfq1)
+    os.rename(rfq2, tfq2)
+    print(Fore.BLUE + "Done with " ' '.join(rset))
+    sys.stdout.write(Style.RESET_ALL)
+    jobprox.pop()
+    # here we sync our changes with the multiprocessing manager
+    jobcount = jobprox
+    print(Fore.CYAN + " ".join([str(len(jobcount)), "jobs remaining."]))
+    sys.stdout.write(Style.RESET_ALL)
+
+def hts_process_reads_multi(reads, lref, outdir, ccores):
+    pipes = int(ccores / 4)
+    if pipes < 1: pipes = 1
+    print(Fore.CYAN + "Dividing " + str(ccores) + " processor cores " +\
+        "between " + str(pipes) + " simultaneous HTStream " +\
+        "pipelines for " + str(4) + " cores each...")
+    sys.stdout.write(Style.RESET_ALL)
+    # set up multiprocessing
+    pool = Pool(processes=pipes)
+    man = Manager()
+    jobcount = man.list([i for i in range(len(reads))])
+    pool.map(hts_process_reads_proc, ([rset, outdir, lref,\
+        jobcount] for rset in reads))
+
+def mm2_align_hts_reads(outdir, ccores, lref):
+    # use Minimap2 to align reads processed with HTS pipeline
+    samtools = which("samtools")
+    if samtools == None:
+        print(Fore.RED + "ERROR: samtools not found.")
+        sys.stdout.write(Style.RESET_ALL)
+        sys.exit()
+    bcftools = which("bcftools")
+    if bcftools == None:
+        print(Fore.RED + "ERROR: bcftools not found.")
+        sys.stdout.write(Style.RESET_ALL)
+        sys.exit()
+    mm = which("minimap2")
+    if mm == None:
+        print(Fore.RED + "ERROR: minimap2 not found.")
+        sys.stdout.write(Style.RESET_ALL)
+        sys.exit()
+    tdir = outdir + "/trimmed"
+    adir = outdir + "/align"
+    reads = get_shortname_fastq_reads(tdir)
+    for rset in reads:
+        rbase = ""
+        if len(rset) == 2:
+            print(Fore.CYAN + "Aligning and processing: " + " ".join(rset))
+            sys.stdout.write(Style.RESET_ALL)
+            rbase, ext = os.path.splitext(os.path.basename(rset[0]))
+        else:
+            print(Fore.CYAN + "Aligning and processing: " + rset)
+            sys.stdout.write(Style.RESET_ALL)
+            rbase, ext = os.path.splitext(os.path.basename(rset))
+        nbase = rbase.split('_')[0]
+        dbam = adir + "/" + nbase + ".mq30.deduped.bam"
+        nm = adir + "/" + nbase + ".nummapped.txt"
+        if os.path.exists(dbam):
+            print(Fore.YELLOW + "Skipping because file exists: " + dbam)
+            sys.stdout.write(Style.RESET_ALL)
+            continue
+        args1 = []
+        if len(rset) == 2:
+            #args1 = [mm, '-x', 'sr', '-t', str(ccores), '-a', lref, rset[0],\
+            args1 = [mm, '-x', 'sr', '--secondary=yes', '-t', str(ccores),\
+                '-a', lref, rset[0], rset[1]]
+        else:
+            args1 = [mm, '-x', 'sr', '-t', str(ccores), '-a', lref, rset]
+        args2 = [samtools, 'sort', '-O', 'bam', '-@', str(ccores),\
+            '/dev/stdin']
+        args3 = [samtools, 'view', '-@', str(ccores), '-q', '30', '-b',\
+            '-o', dbam, '/dev/stdin']
+        print(Fore.BLUE + " ".join(args1))
+        print(" ".join(args2))
+        print(" ".join(args3))
+        sys.stdout.write(Style.RESET_ALL)
+        minim = Popen(args1, stdout=PIPE, shell=False)
+        st1 = Popen(args2, stdin=minim.stdout, stdout=PIPE, shell=False)
+        call(args3, stdin=st1.stdout, shell=False)
+        args1 = [samtools, 'index', dbam]
+        print(Fore.BLUE + " ".join(args1))
+        sys.stdout.write(Style.RESET_ALL)
+        call(args1, shell=False)
+        pybam = pysam.Samfile(dbam, "rb")
+        mcount = pybam.count(read_callback='all')
+        pybam.close()
+        with open(nm, 'w') as o: o.write(str(mcount) + "\n")
+
+def main():
+    # setup
+    args = do_args()
+    args.indir = os.path.abspath(args.indir)
+    args.refdir = os.path.abspath(args.refdir)
+    args.outdir = os.path.abspath(args.outdir)
+    aligndir = args.outdir + "/align"
+    dir_check(args.outdir)
+    myreads = get_shortname_fastq_reads(args.indir)
+    myref, mydict, myfna = wgs_align_prepare_simple_ref(args.refdir,\
+        aligndir, args.mem, args.threads)
+    hts_process_reads_multi(myreads, myref, args.outdir, args.threads)
+    mm2_align_hts_reads(args.outdir, args.threads, myref)
+    print(Fore.CYAN + "Done.")
+    sys.stdout.write(Style.RESET_ALL)
+    return 0
+
+if __name__ == "__main__":
+   sys.exit(main())
+
