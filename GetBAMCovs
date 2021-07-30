@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+
+# This is a helper script in the 3D-Seq Tools pipeline. It
+# enumerates BAM coverage data. Typically you will not need
+# to run this script directly aas it is invoked by other
+# programs. Run it without arguments to get the usage.
+# If you use the script, please provide proper attribution.
+#
+# author: M Radey (email: marad_at_uw.edu)
+
+import argparse, os, sys, pysam
+from array import array
+from Bio import SeqIO
+from colorama import init as cinit
+from colorama import Fore, Back, Style
+
+version     = "1.0.0"
+
+def do_args():
+    desc = "A utility for extracting BAM coverage values"
+    parser = argparse.ArgumentParser(prog=os.path.basename(__file__),\
+        description=desc)
+    parser.add_argument("bam", help="specifies the input BAM file")
+    parser.add_argument("outfile", help="specifies the output file")
+    parser.add_argument("reffile", help="specifies the reference Fasta file")
+    return parser.parse_args()
+
+def get_cov_events(bamfile, ofile, ref):
+    pybam = pysam.AlignmentFile(bamfile, "rb")
+    refdict = SeqIO.to_dict(SeqIO.parse(ref, "fasta"))
+    begin = 0
+    o = open(ofile, 'w')
+    for rep, length in zip(pybam.references, pybam.lengths):
+        stop = length
+        print(Fore.CYAN + "Getting coverage for: " + rep)
+        sys.stdout.write(Style.RESET_ALL)
+        A_Array, C_Array, G_Array, T_Array = pybam.count_coverage(rep,\
+            start=begin, stop=stop, read_callback='all', quality_threshold=20)
+        for idx in range(begin+1, stop+1): 
+            idx = idx - begin - 1
+            cov = A_Array[idx] + C_Array[idx] + G_Array[idx] + T_Array[idx]
+            o.write("\t".join([rep, str(idx+begin+1),\
+                str(refdict[rep].seq[idx]), str(cov),\
+                str(A_Array[idx]), str(C_Array[idx]), str(G_Array[idx]),\
+                str(T_Array[idx])]) + "\n")
+    o.close()
+    pybam.close()
+
+def main():
+    args = do_args()
+    args.bam = os.path.abspath(args.bam)
+    args.outfile = os.path.abspath(args.outfile)
+    args.reffile = os.path.abspath(args.reffile)
+    get_cov_events(args.bam, args.outfile, args.reffile)
+
+if __name__ == "__main__":
+   sys.exit(main())
+
