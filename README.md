@@ -1,5 +1,5 @@
 # Software tools for <i>Genome-wide protein–DNA interaction site mapping using a double strand DNA-specific cytosine deaminase</i>
-![logo](/title.png)
+![logo](/title.jpg)
 ## Guide for Use
 ### Prerequisites
 This software has been tested on the Linux operating system. It may be possible to adapt it for other operating systems. The following software dependencies are required:
