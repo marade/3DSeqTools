@@ -1,0 +1,386 @@
+#!/usr/bin/env python3
+
+# This is the second script in the 3D-Seq Tools pipeline. It
+# enumerates 3D-seq mutations, and potentially other
+# similar phenomena. Run it without arguments to get the usage.
+# If you use the script, please provide proper attribution.
+#
+# author: M Radey (email: marad_at_uw.edu)
+
+import os, sys, argparse, glob, re, gffutils, pysam
+import numpy as np
+import pandas as pd
+from shutil import which
+from multiprocessing import Pool, Manager, cpu_count
+from subprocess import call, Popen, PIPE, STDOUT
+from colorama import init as cinit
+from colorama import Fore, Back, Style
+from Bio import SeqIO
+
+version     = "1.0.0"
+
+def do_args():
+    maxcores = cpu_count()
+    desc = "A tool for profiling 3D-Seq deaminase mutations and " +\
+        "similar phenomena"
+    parser = argparse.ArgumentParser(prog=os.path.basename(__file__),\
+        description=desc)
+    parser.add_argument("indir", help="specifies the input directory " +\
+        "containing the BAM files")
+    parser.add_argument("ref", help="specifies the path to the reference " +\
+        "Fasta file")
+    parser.add_argument("mutations", help="specifies the path to a tab-" +\
+        "delimited file with the mutation types for which to search, " +\
+        "with the reference allele in the first column (e.g. TC), and " +\
+        "the alternate allele in the second column (e.g. TT)")
+    parser.add_argument("-q", "--qmin", type=int, default=20,\
+        help="specifies the minimum read base quality, below which " +\
+        "reads will be filtered. The default is %(default)s. Note that " +\
+        "reads flagged in the BAM file as duplicates, secondary " +\
+        "alignments, unmapped, or QC-fail will also be filtered.")
+    parser.add_argument("-n", "--threads", type=int, default=maxcores,\
+        help="specifies the number of threads to use. " +\
+        "The default is %(default)s.")
+    parser.add_argument("-m", "--mem", type=int,\
+        default=4, help="specifies the amount of memory in Gigabytes to " +\
+        "use for sorting. The default is %(default)s.")
+    parser.add_argument("-t", "--tmp", default="/tmp",\
+        help="specifies the temporary dir to use. The default is %(default)s.")
+    return parser.parse_args()
+
+def read_mutations(mfile):
+    print(Fore.CYAN + "Reading mutation types...")
+    sys.stdout.write(Style.RESET_ALL)
+    mdata = []
+    with open(mfile) as n:
+        for line in n:
+            fields = line.rstrip('\n').split('\t')
+            mdata.append([fields[0], fields[1]])
+            if not len(fields[0]) == len(fields[1]):
+                print(Fore.RED + "ERROR: Ref and alt input allele " +\
+                    "pairs must be the same length.")
+                sys.stdout.write(Style.RESET_ALL)
+                sys.exit()
+    return mdata
+
+def DddA_process_bam(vals):
+    (bcount, mybam, reffa, jobcount, bamdir, bqual) = vals
+    bname, ext = os.path.splitext(os.path.basename(mybam))
+    mycounts = bamdir + "/" + bname + ".counts"
+    # a proxy object is necessary to sync our changes with
+    # the multiprocessing manager
+    jobprox = jobcount
+    if not os.path.exists(mycounts):
+        print(Fore.BLUE + "Tabulating positions for " + mybam)
+        sys.stdout.write(Style.RESET_ALL)
+        args1 = [bcount, mybam, mycounts, reffa]
+        print(args1)
+        call(args1, shell=False)
+        print(Fore.BLUE + "Done with " + mybam)
+        sys.stdout.write(Style.RESET_ALL)
+    else:
+        print(Fore.YELLOW + "Reusing existing file " + mycounts)
+        sys.stdout.write(Style.RESET_ALL)
+    jobprox.pop()
+    # here we sync our changes with the multiprocessing manager
+    jobcount = jobprox
+    print(Fore.BLUE + " ".join([str(len(jobcount)), "jobs remaining."]))
+    sys.stdout.write(Style.RESET_ALL)
+
+def DddA_process_alignments(indir, myref, mdata, threads, bqualmin):
+    print(Fore.CYAN + "Processing reference positions...")
+    sys.stdout.write(Style.RESET_ALL)
+    br = which("GetBAMCovs")
+    if br == None:
+        print(Fore.RED + "ERROR: GetBAMCovs not found.")
+        sys.stdout.write(Style.RESET_ALL)
+        sys.exit()
+    refdict = SeqIO.to_dict(SeqIO.parse(myref, "fasta"))
+    # alocs contains the first (0-indexed) ref position of each allele,
+    # including context bases
+    alocs = {}
+    # mlocs contains all positions where potential mutations can occur,
+    # and does not include the context bases
+    mlocs = {}
+    replens = []
+    nmdict = {}
+    for replicon in refdict.keys():
+        replens.append(len(refdict[replicon].seq))
+        alocs[replicon] = {}
+        mlocs[replicon] = {}
+        nmdict[replicon] = {}
+        for ref, alt in mdata:
+            #print(ref + " " + alt)
+            alocs[replicon][(ref, alt)] = set()
+            mlocs[replicon][(ref, alt)] = set()
+            nmdict[replicon][(ref, alt)] = set()
+            # if mut is a homopolymer, it needs different matching syntax
+            # to properly capture all possible match locations
+            # this (?=A{2}) will properly capture all AA strings positions
+            # in AAAAA
+            mymut = ref
+            if ref == len(ref) * ref[0]:
+                # yes, it's a homopolymer, so...
+                mymut = "(?=" + ref[0] + "{" + str(len(ref)) + "})"
+            # get all list indices for our equal length strings
+            idx = list(range(len(ref)))
+            # get indices where the two strings match
+            midx = []
+            for i, (r, a) in enumerate(zip(list(ref), list(alt))):
+                if r == a: midx.append(i)
+            # now remove the matching indices from all the indices
+            # to get the non-matching indices
+            nmidx = [x for x in idx if x not in midx]
+            nmdict[replicon][(ref, alt)] = nmidx
+            for match in re.finditer(mymut, str(refdict[replicon].seq)):
+                alocs[replicon][(ref, alt)].add(match.start())
+                for pos in nmidx:
+                    mlocs[replicon][(ref, alt)].add(match.start() + pos + 1)
+            if not len(mlocs[replicon][(ref, alt)]) % \
+                len(alocs[replicon][(ref, alt)]) == 0:
+                print(Fore.RED + "ERROR: Length mismatch reference " +\
+                    "position index.")
+                sys.stdout.write(Style.RESET_ALL)
+                sys.exit()
+            # convert to sorted NumPy arrays
+            alocs[replicon][(ref, alt)] =\
+                np.array(sorted(list(alocs[replicon][(ref, alt)]),\
+                key=lambda x: int(x)), dtype=int)
+            mlocs[replicon][(ref, alt)] =\
+                np.array(sorted(list(mlocs[replicon][(ref, alt)]),\
+                key=lambda x: int(x)), dtype=int)
+            if not len(mlocs[replicon][(ref, alt)]) % \
+                len(alocs[replicon][(ref, alt)]) == 0:
+                print(Fore.RED + "ERROR: Length mismatch reference " +\
+                    "position index.")
+                sys.stdout.write(Style.RESET_ALL)
+                sys.exit()
+            #print(alocs[replicon][mut][:10])
+    print(Fore.CYAN + "Counting base coverage...")
+    sys.stdout.write(Style.RESET_ALL)
+    bams = glob.glob(indir + "/*.deduped.bam")
+    # set up multiprocessing
+    print(Fore.BLUE + "Using", str(threads), "processor cores...")
+    sys.stdout.write(Style.RESET_ALL)
+    pool = Pool(processes=int(threads))
+    man = Manager()
+    jobcount = man.list([i for i in range(len(bams))])
+    pool.map(DddA_process_bam, ([br, bam, myref, jobcount, indir, bqualmin]\
+        for bam in bams))
+    return replens, alocs, mlocs, nmdict
+
+def DddA_read_count(vals):
+    (cfile, rowlen, mlocs, jobcount) = vals
+    # a proxy object is necessary to sync our changes with
+    # the multiprocessing manager
+    jobprox = jobcount
+    cols = ['rid', 'pos', 'base', 'cov', 'Acov', 'Ccov', 'Gcov', 'Tcov']
+    # read the counts into a data frame
+    #df = pd.read_csv(cfile, sep='\t', index_col='pos', names=cols)
+    df = pd.read_csv(cfile, sep='\t', names=cols)
+    #print(df.head())
+    # reduce the data frame to only our positions of interest
+    dfdict = {}
+    for replicon in mlocs.keys():
+        dfdict[replicon] = {}
+        for ref, alt in mlocs[replicon]:
+            #newdf = df.filter(items=mlocs[replicon][(ref, alt)], axis=0)
+            #newdf = df.loc[df['pos'].isin(mlocs[replicon][(ref, alt)])]
+            newdf = df.loc[(df['pos'].isin(mlocs[replicon][(ref, alt)])) &\
+                (df['rid'] == replicon)]
+            #if ref == "AC" and alt == "AT":
+            #    print("newdf: " + str(len(newdf)))
+            dfdict[replicon][(ref, alt)] = newdf
+            #print(mlocs[replicon][mut][:10])
+            #print(newdf.head(20))
+    jobprox.pop()
+    # here we sync our changes with the multiprocessing manager
+    jobcount = jobprox
+    #mrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0 / 1024.0
+    print(Fore.BLUE + " ".join([str(len(jobcount)), "jobs remaining."]))
+    #print(Fore.BLUE + "Mem: " + str('{0:.2f}'.format(mrss)) + "G")
+    sys.stdout.write(Style.RESET_ALL)
+    return {cfile: dfdict}
+
+def DddA_read_counts(indir, reflens, mlocs, threads):
+    print(Fore.CYAN + "Reading and filtering counts...")
+    sys.stdout.write(Style.RESET_ALL)
+    countfiles = glob.glob(indir + "/*.counts")
+    # set up multiprocessing
+    print(Fore.BLUE + "Using", str(threads), "processor cores...")
+    sys.stdout.write(Style.RESET_ALL)
+    pool = Pool(processes=int(threads))
+    man = Manager()
+    jobcount = man.list([i for i in range(len(countfiles))])
+    results = pool.map(DddA_read_count, ([countfile, np.sum(reflens),\
+        mlocs, jobcount] for countfile in countfiles))
+    outdict = {}
+    print(Fore.BLUE + "Collecting count results...")
+    sys.stdout.write(Style.RESET_ALL)
+    for res in results:
+        if res == None: continue
+        outdict.update(res)
+    return outdict
+
+def DddA_write_freqs(vals):
+    (cfile, dfdict, ref, mdata, nmdict, alocs, mlocs, outdir, jobcount) = vals
+    # a proxy object is necessary to sync our changes with
+    # the multiprocessing manager
+    jobprox = jobcount
+    refdict = SeqIO.to_dict(SeqIO.parse(ref, "fasta"))
+    bname, ext = os.path.splitext(cfile)
+    cname = os.path.basename(bname).split('.')[0]
+    outfile = bname + '.raw.tab'
+    outdf = pd.DataFrame()
+    for replicon in dfdict.keys():
+        repdf = pd.DataFrame()
+        for ref, alt in dfdict[replicon]:
+            pairdf = pd.DataFrame()
+            # create the easy columns for output
+            pairdf["position"] = alocs[replicon][(ref, alt)] + 1
+            pairdf["replicon"] = replicon
+            pairdf["construct"] = cname
+            pairdf["refseq"] = ref
+            pairdf["altseq"] = alt
+            # ..and now the more tricky columns
+            #
+            #mlocs[replicon][(ref, alt)] = [33, 56, 89...]
+            #nmdict[replicon][(ref, alt)] = [0, 2]
+            #
+            # if the number of non-matching bases between the
+            # ref and alt alleles is one...
+            if len(nmdict[replicon][(ref, alt)]) == 1:
+                refbase = ref[nmdict[replicon][(ref, alt)][0]]
+                altbase = alt[nmdict[replicon][(ref, alt)][0]]
+                if refbase == "A":
+                    pairdf["ref_allele_count"] =\
+                        dfdict[replicon][(ref, alt)]["Acov"].tolist()
+                elif refbase == "C":
+                    pairdf["ref_allele_count"] =\
+                        dfdict[replicon][(ref, alt)]["Ccov"].tolist()
+                elif refbase == "G":
+                    pairdf["ref_allele_count"] =\
+                        dfdict[replicon][(ref, alt)]["Gcov"].tolist()
+                elif refbase == "T":
+                    pairdf["ref_allele_count"] =\
+                        dfdict[replicon][(ref, alt)]["Tcov"].tolist()
+                else:
+                    print(Fore.RED + "ERROR: Unhandled base: " + refbase)
+                    sys.stdout.write(Style.RESET_ALL)
+                    sys.exit()
+                if altbase == "A":
+                    pairdf["alt_allele_count"] =\
+                        dfdict[replicon][(ref, alt)]["Acov"].tolist()
+                elif altbase == "C":
+                    pairdf["alt_allele_count"] =\
+                        dfdict[replicon][(ref, alt)]["Ccov"].tolist()
+                elif altbase == "G":
+                    pairdf["alt_allele_count"] =\
+                        dfdict[replicon][(ref, alt)]["Gcov"].tolist()
+                elif altbase == "T":
+                    pairdf["alt_allele_count"] =\
+                        dfdict[replicon][(ref, alt)]["Tcov"].tolist()
+                else:
+                    print(Fore.RED + "ERROR: Unhandled base: " + altbase)
+                    sys.stdout.write(Style.RESET_ALL)
+                    sys.exit()
+            else:
+                # we have more than one non-matching base between the
+                # ref and alt alleles, so we'll collect ref and alt
+                # values for each of base and then take the minimum
+                # of the set each time
+                #
+                rtmpdf = pd.DataFrame()
+                atmpdf = pd.DataFrame()
+                for nmbase in nmdict[replicon][(ref, alt)]:
+                    rbase = ref[nmbase]
+                    abase = alt[nmbase]
+                    nomdf = dfdict[replicon][(ref,\
+                        alt)].loc[dfdict[replicon][(ref,\
+                        alt)]['pos'].isin(alocs[replicon][(ref,\
+                        alt)] + nmbase + 1)]
+                    rvals = []
+                    avals = []
+                    if rbase == "A":
+                        rtmpdf[nmbase] = nomdf["Acov"].values
+                    elif rbase == "C":
+                        rtmpdf[nmbase] = nomdf["Ccov"].values
+                    elif rbase == "G":
+                        rtmpdf[nmbase] = nomdf["Gcov"].values
+                    elif rbase == "T":
+                        rtmpdf[nmbase] = nomdf["Tcov"].values
+                    else:
+                        print(Fore.RED + "ERROR: Unhandled base: " + rbase)
+                        sys.stdout.write(Style.RESET_ALL)
+                        sys.exit()
+                    if abase == "A":
+                        atmpdf[nmbase] = nomdf["Acov"].values
+                    elif abase == "C":
+                        atmpdf[nmbase] = nomdf["Ccov"].values
+                    elif abase == "G":
+                        atmpdf[nmbase] = nomdf["Gcov"].values
+                    elif abase == "T":
+                        atmpdf[nmbase] = nomdf["Tcov"].values
+                    else:
+                        print(Fore.RED + "ERROR: Unhandled base: " + abase)
+                        sys.stdout.write(Style.RESET_ALL)
+                        sys.exit()
+                # now that we have ref and alt values for all non-matching
+                # positions, get the minimums
+                rtmpdf['min'] = rtmpdf.min(axis=1)
+                atmpdf['min'] = atmpdf.min(axis=1)
+                pairdf["ref_allele_count"] = rtmpdf['min']
+                pairdf["alt_allele_count"] = atmpdf['min']
+            # here we have finished with one ref/alt combo for this replicon
+            repdf = repdf.append(pairdf, ignore_index=True)
+        # here we have finished with one replicon
+        outdf = outdf.append(repdf, ignore_index=True)
+    # here we have finished with all replicons
+    outdf.sort_values(by="position", inplace=True, ignore_index=True)
+    #with pd.option_context('display.max_columns', None): 
+    #    print(outdf.head())
+    # add alt_freq column
+    outdf['alt_freq'] = outdf["alt_allele_count"] /\
+        (outdf["ref_allele_count"] + outdf["alt_allele_count"])
+    # write output
+    print(Fore.BLUE + "Writing output: " + outfile)
+    sys.stdout.write(Style.RESET_ALL)
+    outdf.to_csv(outfile, sep='\t', index=False)
+    jobprox.pop()
+    # here we sync our changes with the multiprocessing manager
+    jobcount = jobprox
+    print(Fore.BLUE + " ".join([str(len(jobcount)), "jobs remaining."]))
+    sys.stdout.write(Style.RESET_ALL)
+
+def DddA_write_all_freqs(acounts, myref, mutdict, alocs, mlocs, nmdict,\
+    outdir, threads):
+    print(Fore.CYAN + "Writing 3D-seq raw data...")
+    sys.stdout.write(Style.RESET_ALL)
+    # set up multiprocessing
+    print(Fore.BLUE + "Using", str(threads), "processor cores...")
+    sys.stdout.write(Style.RESET_ALL)
+    pool = Pool(processes=int(threads))
+    man = Manager()
+    jobcount = man.list([i for i in range(len(acounts))])
+    pool.map(DddA_write_freqs, ([countfile, mutdfs, myref, mutdict, nmdict,\
+        alocs, mlocs, outdir, jobcount] for countfile,\
+        mutdfs in acounts.items()))
+
+def main():
+    # setup
+    args = do_args()
+    # use absolute paths for all files
+    args.indir = os.path.abspath(args.indir)
+    args.ref = os.path.abspath(args.ref)
+    mdict = read_mutations(args.mutations)
+    rlens, Alocs, Mlocs, NMdict = DddA_process_alignments(args.indir,\
+        args.ref, mdict, args.threads, args.qmin)
+    allcounts = DddA_read_counts(args.indir, rlens, Mlocs, args.threads)
+    DddA_write_all_freqs(allcounts, args.ref, mdict, Alocs, Mlocs, NMdict,\
+        args.indir, args.threads)
+    print(Fore.BLUE + "Done.")
+    sys.stdout.write(Style.RESET_ALL)
+    return 0
+
+if __name__ == "__main__":
+   sys.exit(main())
