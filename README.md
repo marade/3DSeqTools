@@ -24,6 +24,7 @@ This pipeline assumes your paired-end Fastq files are named like so:
 ### Run the Pipeline
 Code blah blah...
 
+    # Note you are cloning nearly 4GB of files here.
     $ git clone https://github.com/marade/3DSeqTools.git
     $ cd 3DSeqtools
     $ python3 AlignReads -n 15 fq NCBI/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1 tmf
