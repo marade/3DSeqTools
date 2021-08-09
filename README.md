@@ -29,5 +29,6 @@ Code blah blah...
     $ cd 3DSeqtools
     $ python3 AlignReads -n 15 fq NCBI/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1 tmf
     $ python3 Process3DSeq -n 3 tmf/align NCBI/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1.fna mutation-types.tab
+    $ Rscript allele_count_filtering.R tmf/align output.tab
     
 Other stuff.
