@@ -243,11 +243,7 @@ calculate_moving_average <- function(maaf_tab,
 
 ## See text of publication for parameters used for different analyses.
 
-tfset <- c('29.mq30.deduped.raw.tab',
-           '30.mq30.deduped.raw.tab',
-           '31.mq30.deduped.raw.tab',
-           '32.mq30.deduped.raw.tab')
-tfset <- paste0('./sample_tab_data/', tfset)
+tfset <- list.files(inpath), full.names=TRUE)
 
 sids <- c('rep1', 'rep2', 'rep3', 'rep4')
 
