@@ -28,6 +28,6 @@ Code blah blah...
     $ git clone https://github.com/marade/3DSeqTools.git
     $ cd 3DSeqtools
     $ python3 AlignReads -n 15 fq NCBI/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1 tmf
-    $ Process3DSeq -n 3 tmf/align NCBI/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1.fna mutation-types.tab
+    $ python3 Process3DSeq -n 3 tmf/align NCBI/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1.fna mutation-types.tab
     
 Other stuff.
