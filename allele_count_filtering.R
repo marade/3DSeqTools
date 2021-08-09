@@ -1,6 +1,14 @@
 
 library(evobiR)
 
+args <- commandArgs(trailingOnly = TRUE)
+inpath <- args[1]
+outfile <- args[2]
+if (is.na(inpath) || is.na(outfile)) {
+    message("Syntax: Rscript allele_count_filtering.R <input-directory> <output-file>")
+    quit()
+}
+
 ## Processing of 3D-seq replicate data after generation of .tab files by initial
 ## sequence read processing.
 ## Overall workflow (additional comments below):
@@ -232,12 +240,6 @@ calculate_moving_average <- function(maaf_tab,
   
   return(out)
 }
-
-
-
-## Example of processing a data set
-## Strain:  gcsR-dddA  Tn7::Para-dddI  delta-ung
-## Condition:  no ara, 3 passages
 
 ## See text of publication for parameters used for different analyses.
 
