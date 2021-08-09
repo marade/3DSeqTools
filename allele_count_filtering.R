@@ -278,3 +278,6 @@ mean_aaf_table_no_isol <- filter_isolated_sites(mean_aaf_table,
 mean_aaf_w_mov_avg <- calculate_moving_average(mean_aaf_table_no_isol,
                                                sliding_window_bp = 75)
 ## (Save and visualize as needed)
+message("Writing output...")
+message(output)
+write.table(mean_aaf_w_mov_avg, file=outfile, col.names=NA, quote=FALSE, sep='\t')
