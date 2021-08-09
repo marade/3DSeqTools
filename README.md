@@ -2,7 +2,7 @@
 ![logo](/title.png)
 ## Guide for Use
 ### Prerequisites
-This software has been tested on the Linux operating system. It may be possible to adapt it for other operating systems. The following software dependencies are required:
+This software has been tested on the Linux operating system. It may be possible to adapt it for other operating systems. The following dependencies were used for the paper, though other versions may work:
 * Python 3.8.5
 * Python libraries:
   * Biopython 1.78
@@ -22,7 +22,7 @@ This pipeline assumes your paired-end Fastq files are named like so:
     sampleY_1.fastq.gz sampleY_2.fastq.gz
 
 ### Run the Pipeline
-Code blah blah...
+The following pipeline works on a vanilla Ubuntu 20.04 installation with the prerequisites installed. We were able to process these data in the cloud with an AWS EC2 C5.2xlarge instance (8 compute cores; 16GB RAM).
 
     # Note you are cloning nearly 4GB of files here.
     $ git clone https://github.com/marade/3DSeqTools.git
