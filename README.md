@@ -10,6 +10,9 @@ This software has been tested on the Linux operating system. It may be possible 
   * colorama 0.4.3
   * PySAM 0.16.0.1
   * gffutils 0.10.1
+* R 3.6.3
+* R libraries:
+  * evobiR 1.1
 * HTStream 1.3.0 
 * Minimap2 2.17-r974-dirty
 * SAMTools 1.10
