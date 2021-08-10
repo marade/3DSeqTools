@@ -9,6 +9,7 @@ This software has been tested on the Linux operating system. It may be possible 
   * Pandas 1.3.0
   * colorama 0.4.3
   * PySAM 0.16.0.1
+  * gffutils 0.10.1
 * HTStream 1.3.0 
 * Minimap2 2.17-r974-dirty
 * SAMTools 1.10
