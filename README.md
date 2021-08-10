@@ -12,6 +12,7 @@ This software has been tested on the Linux operating system. It may be possible 
 * HTStream 1.3.0 
 * Minimap2 2.17-r974-dirty
 * SAMTools 1.10
+* Picard Tools 2.18.25
 
 ### Do Sequencing and Generate Fastq Files
 We assume you have generated your sequencing data in roughly the manner described in the paper, using Illumina paired-end sequencing. We provide some example files for testing below.
