@@ -8,7 +8,7 @@
 
 import os, sys, argparse, glob, re
 import numpy as np
-from shutil import which
+from shutil import which, copyfile
 from multiprocessing import Pool, Manager, cpu_count
 from colorama import init as cinit
 from colorama import Fore, Back, Style
