@@ -24,9 +24,11 @@ This pipeline assumes your paired-end Fastq files are named like so:
 ### Run the Pipeline
 The following pipeline works on a vanilla Ubuntu 20.04 installation with the prerequisites installed. We were able to process these data in the cloud with an AWS EC2 C5.2xlarge instance (8 compute cores; 16GB RAM).
 
-    # Note you are cloning nearly 4GB of files here.
     $ git clone https://github.com/marade/3DSeqTools.git
-    $ cd 3DSeqtools
+    $ cd 3DSeqtools && mkdir fastq && cd fastq
+    # Note you are downloading nearly 4GB of fastq data here:
+    $ for x in {1..4}; do for y in {1..2}; do wget https://3d-seq-01.s3.us-west-2.amazonaws.com/fastq/gcsR-dddA-Para-dddI-delta-ung-0Ara-P3-rep${x}_${y}.fastq.gz ; done ; done
+    $ cd ../
     $ python3 AlignReads -n 15 fastq NCBI/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1 tmf
     $ python3 Process3DSeq -n 3 tmf/align NCBI/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1.fna mutation-types.tab
     $ Rscript allele_count_filtering.R tmf/align output.tab
