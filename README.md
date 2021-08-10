@@ -22,6 +22,7 @@ This software has been tested on the Linux operating system. It may be possible 
 The prerequisites can be installed on a frshly installed and updated Ubuntu 20.04 machine using the installation script:
 
     $ git clone https://github.com/marade/3DSeqTools.git
+    $ cd 3DSeqTools
     $ bash ubuntu-install.sh
 
 Depending on your environment, installing the prerequisites with a package sytem like Bioconda or using Python virtual environments may be advisable.
