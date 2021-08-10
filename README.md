@@ -46,5 +46,6 @@ The following pipeline works on a vanilla Ubuntu 20.04 installation with the pre
     $ python3 AlignReads -n 8 fastq NCBI/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1 tmf
     $ python3 Process3DSeq -n 3 tmf/align NCBI/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1.fna mutation-types.tab
     $ Rscript allele_count_filtering.R tmf/align output.tab
+    $ awk '$3 != "0"' output.tab
     
-Other stuff.
+The output shows a peak corresponding to the GcsR binding site.
