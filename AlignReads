@@ -9,6 +9,7 @@
 import os, sys, argparse, glob, re, gzip, pysam
 import numpy as np
 from shutil import which, copyfile
+from subprocess import call, Popen, PIPE
 from multiprocessing import Pool, Manager, cpu_count
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from colorama import init as cinit
