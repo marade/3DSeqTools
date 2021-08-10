@@ -64,7 +64,8 @@ def read_mutations(mfile):
     return mdata
 
 def DddA_process_bam(vals):
-    (bcount, mybam, reffa, jobcount, bamdir, bqual) = vals
+    (mybam, reffa, jobcount, bamdir, bqual) = vals
+    pyth = which("python")
     bname, ext = os.path.splitext(os.path.basename(mybam))
     mycounts = bamdir + "/" + bname + ".counts"
     # a proxy object is necessary to sync our changes with
@@ -73,7 +74,7 @@ def DddA_process_bam(vals):
     if not os.path.exists(mycounts):
         print(Fore.BLUE + "Tabulating positions for " + mybam)
         sys.stdout.write(Style.RESET_ALL)
-        args1 = [bcount, mybam, mycounts, reffa]
+        args1 = [pyth, "GetBAMCovs", mybam, mycounts, reffa]
         print(args1)
         call(args1, shell=False)
         print(Fore.BLUE + "Done with " + mybam)
@@ -90,11 +91,6 @@ def DddA_process_bam(vals):
 def DddA_process_alignments(indir, myref, mdata, threads, bqualmin):
     print(Fore.CYAN + "Processing reference positions...")
     sys.stdout.write(Style.RESET_ALL)
-    br = which("GetBAMCovs")
-    if br == None:
-        print(Fore.RED + "ERROR: GetBAMCovs not found.")
-        sys.stdout.write(Style.RESET_ALL)
-        sys.exit()
     refdict = SeqIO.to_dict(SeqIO.parse(myref, "fasta"))
     # alocs contains the first (0-indexed) ref position of each allele,
     # including context bases
@@ -165,7 +161,7 @@ def DddA_process_alignments(indir, myref, mdata, threads, bqualmin):
     pool = Pool(processes=int(threads))
     man = Manager()
     jobcount = man.list([i for i in range(len(bams))])
-    pool.map(DddA_process_bam, ([br, bam, myref, jobcount, indir, bqualmin]\
+    pool.map(DddA_process_bam, ([bam, myref, jobcount, indir, bqualmin]\
         for bam in bams))
     return replens, alocs, mlocs, nmdict
 
