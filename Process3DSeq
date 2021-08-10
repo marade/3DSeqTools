@@ -75,7 +75,6 @@ def DddA_process_bam(vals):
         print(Fore.BLUE + "Tabulating positions for " + mybam)
         sys.stdout.write(Style.RESET_ALL)
         args1 = [pyth, "GetBAMCovs", mybam, mycounts, reffa]
-        print(args1)
         call(args1, shell=False)
         print(Fore.BLUE + "Done with " + mybam)
         sys.stdout.write(Style.RESET_ALL)
