@@ -23,7 +23,7 @@ This software has been tested on the Linux operating system. It may be possible 
 * BCFTools 1.10
 * Picard Tools 2.18.25
 
-The prerequisites can be installed on a frshly installed and updated Ubuntu 20.04 machine using the installation script:
+The prerequisites can be installed on a vanilla Ubuntu 20.04 machine using the installation script:
 
     $ git clone https://github.com/marade/3DSeqTools.git
     $ cd 3DSeqTools
