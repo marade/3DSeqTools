@@ -38,9 +38,11 @@ This pipeline assumes your paired-end Fastq files are named like so:
 ### Run the Pipeline
 The following pipeline works on a vanilla Ubuntu 20.04 installation with the prerequisites installed. We were able to process these data in the cloud with an AWS EC2 C5.2xlarge instance (8 compute cores; 16GB RAM).
 
-    # if you haven't cloned the repo already
+    # If you haven't cloned the repo already...
     $ git clone https://github.com/marade/3DSeqTools.git
-    $ cd 3DSeqTools && mkdir fastq && cd fastq
+    $ cd 3DSeqTools
+    #
+    $ mkdir fastq && cd fastq
     # Note you are downloading nearly 4GB of fastq data here:
     $ for x in {1..4}; do for y in {1..2}; do wget https://3d-seq-01.s3.us-west-2.amazonaws.com/fastq/gcsR-dddA-Para-dddI-delta-ung-0Ara-P3-rep${x}_${y}.fastq.gz ; done ; done
     $ cd ../
