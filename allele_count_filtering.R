@@ -37,7 +37,7 @@ tabulate_all_samples <- function(tabfile_set,
   out <- NULL
   
   for (i in 1:length(tabfile_set)) {
-    print(paste0(" Reading file ", i, " of ", length(tabfile_set)))
+    message(paste0("Reading file ", i, " of ", length(tabfile_set)))
     
     s <- read.delim(tabfile_set[i])
     
@@ -82,7 +82,7 @@ filter_snps <- function(tab,
   ## aaf_threshold - defines "SNP"
   
   if (filter_method == "individual") {
-    print("  Filtering SNPs in individual samples.")
+    message("Filtering SNPs in individual samples.")
     
     ref_col_nos <- grep('ref', colnames(tab))
     
@@ -95,7 +95,7 @@ filter_snps <- function(tab,
     }
     
   } else if (filter_method == "universal") {
-    print("  Filtering universal SNPs.")
+    message("Filtering universal SNPs.")
     
     ref_col_nos <- grep('ref', colnames(tab))
     alt_col_nos <- ref_col_nos + 1
@@ -111,7 +111,7 @@ filter_snps <- function(tab,
     
   } else {
     
-    print("Set filter_method to 'individual' or 'universal'")
+    message("Set filter_method to 'individual' or 'universal'")
     return(FALSE)
   }
   
@@ -214,11 +214,11 @@ calculate_moving_average <- function(maaf_tab,
   maaf <- maaf_tab[,2]
   maxpos <- max(pos)
   
-  print(paste0("   Calculating moving avg with ", sliding_window_bp, "bp window size"))
+  message(paste0("Calculating moving avg with ", sliding_window_bp, "bp window size"))
   
   half_wind = floor(sliding_window_bp/2)
   if (half_wind == sliding_window_bp/2) { 
-    print('WARNING - use odd no of bp for sliding window size!') 
+    message('WARNING - use odd no of bp for sliding window size!') 
   }
   
   allbases <- rep(NA, maxpos)
@@ -243,7 +243,7 @@ calculate_moving_average <- function(maaf_tab,
 
 ## See text of publication for parameters used for different analyses.
 
-tfset <- list.files(inpath), full.names=TRUE)
+tfset <- list.files(inpath, pattern="*.tab", full.names=TRUE)
 
 sids <- c('rep1', 'rep2', 'rep3', 'rep4')
 
@@ -279,5 +279,4 @@ mean_aaf_w_mov_avg <- calculate_moving_average(mean_aaf_table_no_isol,
                                                sliding_window_bp = 75)
 ## (Save and visualize as needed)
 message("Writing output...")
-message(output)
 write.table(mean_aaf_w_mov_avg, file=outfile, col.names=NA, quote=FALSE, sep='\t')
