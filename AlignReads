@@ -6,7 +6,7 @@
 #
 # author: M Radey (email: marad_at_uw.edu)
 
-import os, sys, argparse, glob, re
+import os, sys, argparse, glob, re, gzip
 import numpy as np
 from shutil import which, copyfile
 from multiprocessing import Pool, Manager, cpu_count
