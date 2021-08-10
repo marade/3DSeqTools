@@ -19,6 +19,13 @@ This software has been tested on the Linux operating system. It may be possible 
 * BCFTools 1.10
 * Picard Tools 2.18.25
 
+The prerequisites can be installed on a frshly installed and updated Ubuntu 20.04 machine using the installation script:
+
+    $ git clone https://github.com/marade/3DSeqTools.git
+    $ bash ubuntu-install.sh
+
+Depending on your environment, installing the prerequisites with a package sytem like Bioconda or using Python virtual environments may be advisable.
+
 ### Do Sequencing and Generate Fastq Files
 We assume you have generated your sequencing data in roughly the manner described in the paper, using Illumina paired-end sequencing. We provide some example files for testing below.
 ### Prepare Fastq Files
@@ -30,6 +37,7 @@ This pipeline assumes your paired-end Fastq files are named like so:
 ### Run the Pipeline
 The following pipeline works on a vanilla Ubuntu 20.04 installation with the prerequisites installed. We were able to process these data in the cloud with an AWS EC2 C5.2xlarge instance (8 compute cores; 16GB RAM).
 
+    # if you haven't cloned the repo already
     $ git clone https://github.com/marade/3DSeqTools.git
     $ cd 3DSeqTools && mkdir fastq && cd fastq
     # Note you are downloading nearly 4GB of fastq data here:
