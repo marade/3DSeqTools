@@ -1,6 +1,8 @@
 # Software tools for <i>Genome-wide protein–DNA interaction site mapping using a double strand DNA-specific cytosine deaminase</i>
 ![logo](/title.png)
 ## Guide for Use
+These tools can be used to analyze data produced as described in the paper:
+https://www.biorxiv.org/content/10.1101/2021.08.01.454665v1
 ### Prerequisites
 This software has been tested on the Linux operating system. It may be possible to adapt it for other operating systems. The following dependencies were used for the paper, though other versions may work:
 * Python 3.8.5
