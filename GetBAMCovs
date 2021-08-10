@@ -11,6 +11,7 @@
 import argparse, os, sys, pysam
 from array import array
 from Bio import SeqIO
+from subprocess import call, Popen, PIPE
 from colorama import init as cinit
 from colorama import Fore, Back, Style
 
