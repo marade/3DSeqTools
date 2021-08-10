@@ -134,7 +134,6 @@ def hts_process_reads_proc(vals):
     # a proxy object is necessary to sync our changes with
     # the multiprocessing manager
     tdir = outdir + "/trimmed"
-    dir_check(tdir)
     jobprox = jobcount
     hSD = which("hts_SuperDeduper")
     hAT = which("hts_AdapterTrimmer")
@@ -205,6 +204,8 @@ def hts_process_reads_proc(vals):
 
 def hts_process_reads_multi(reads, lref, outdir, ccores):
     pipes = int(ccores / 4)
+    tdir = outdir + "/trimmed"
+    dir_check(tdir)
     if pipes < 1: pipes = 1
     print(Fore.CYAN + "Dividing " + str(ccores) + " processor cores " +\
         "between " + str(pipes) + " simultaneous HTStream " +\
