@@ -52,10 +52,11 @@ The following pipeline works on a vanilla Ubuntu 20.04 installation with the pre
     $ cd ../
     $ python3 AlignReads -n 8 fastq NCBI/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1 tmf
     $ python3 Process3DSeq -n 3 tmf/align NCBI/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1/Pseudomonas_aeruginosa_PAO1_GCF_000006765.1.fna mutation-types.tab
+    # Filtering paremeters can be modified within allele_count_filtering.R
     $ Rscript allele_count_filtering.R tmf/align output.tab
     $ awk '$3 != "0"' output.tab
     
-The output shows a peak corresponding to the GcsR binding site in the promoter region of gcvH2:
+The output shows a peak corresponding to the GcsR binding site in the promoter region of gcvH2 (maaf = mean alternative allele frequency):
 
             pos     maaf                    mov_avg_75bp
     334409  2745370 0.0290809928898512      0.00193873285932341
