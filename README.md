@@ -114,3 +114,5 @@ The output shows a peak corresponding to the GcsR binding site in the promoter r
     334774  2748549 0.0365225415989314      0.00365225415989314
     334779  2748595 0.0247510495596969      0.00247510495596969
 
+### Analyze Peaks
+
