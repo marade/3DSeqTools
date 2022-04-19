@@ -116,3 +116,6 @@ The output shows a peak corresponding to the GcsR binding site in the promoter r
 
 ### Analyze Peaks
 
+For further analysis of peaks, please see the instructions here:
+
+https://github.com/marade/3DSeqTools/blob/main/MATLAB/Analyze%203D-seq%20data.pdf
